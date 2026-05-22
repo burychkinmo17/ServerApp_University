@@ -1,7 +1,7 @@
 import re
 from datetime import date
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
-from app.dto.auth_dto import UserDTO  # Импортируем DTO для метода toDTO
+from app.dto.auth_dto import UserDTO, RoleDTO, PermissionDTO
 
 
 # Общие правила для пароля
@@ -64,3 +64,65 @@ class LoginSchema(BaseModel):
     @classmethod
     def check_password(cls, v: str):
         return validate_complex_password(v)
+
+# Валидация для Ролей
+class StoreRoleRequest(BaseModel):
+    name: str = Field(..., min_length=2, description="Имя роли")
+    # Регулярное выражение разрешает только латиницу, цифры, дефис и подчёркивание
+    slug: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$", description="Уникальный шифр роли")
+    description: str | None = None
+
+    def toDTO(self, role_id: int, created_by: int) -> RoleDTO:
+        """Преобразует входной запрос в объект RoleDTO"""
+        return RoleDTO(
+            id=role_id,
+            name=self.name,
+            slug=self.slug,
+            description=self.description,
+            created_at=date.today(), # Будет преобразовано в datetime автоматически
+            created_by=created_by
+        )
+
+class UpdateRoleRequest(BaseModel):
+    name: str | None = None
+    slug: str | None = None
+    description: str | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, v: str | None):
+        if v and not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError("Slug должен содержать только латиницу, цифры, дефис или подчёркивание")
+        return v
+
+# Валидация для Разрешений (Прав)
+class StorePermissionRequest(BaseModel):
+    name: str = Field(..., min_length=2)
+    slug: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$")
+    description: str | None = None
+
+    def toDTO(self, perm_id: int, created_by: int) -> PermissionDTO:
+        """Преобразует входной запрос в объект PermissionDTO [cite: 48]"""
+        return PermissionDTO(
+            id=perm_id,
+            name=self.name,
+            slug=self.slug,
+            description=self.description,
+            created_at=date.today(),
+            created_by=created_by
+        )
+
+class UpdatePermissionRequest(BaseModel):
+    name: str | None = None
+    slug: str | None = None
+    description: str | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, v: str | None):
+        if v and not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError("Slug должен содержать только латиницу, цифры, дефис или подчёркивание")
+        return v
+
+class AttachUserRoleRequest(BaseModel):
+    role_id: int = Field(..., description="ID роли, которую нужно присвоить пользователю")

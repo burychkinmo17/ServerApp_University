@@ -9,6 +9,7 @@ import jwt
 from jwt.exceptions import InvalidTokenError
 from app.database import get_db
 from app.models.auth_models import User
+from app.models.auth_models import RoleUser, PermissionRole, Role, Permission
 
 # Настройка алгоритма хеширования (bcrypt)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -79,3 +80,38 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise credentials_exception
 
     return user
+
+class PermissionChecker:
+    def __init__(self, required_permission_slug: str):
+        # Принимаем шифр разрешения, который нужен для этого маршрута
+        self.required_permission_slug = required_permission_slug
+
+    def __call__(self, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+        """
+        Этот метод автоматически вызывается FastAPI при проверке Depends().
+        Ищет, есть ли у юзера через его роли нужное разрешение.
+        """
+        # Находим все активные (не удаленные) роли пользователя
+        user_roles = db.query(RoleUser).filter(
+            RoleUser.user_id == current_user.id,
+            RoleUser.deleted_at == None
+        ).subquery()
+
+        # Ищем, привязано ли к этим ролям нужное нам разрешение (проверяем всю цепочку)
+        has_permission = db.query(PermissionRole).join(
+            Permission, Permission.id == PermissionRole.permission_id
+        ).filter(
+            PermissionRole.role_id.in_(db.query(user_roles.c.role_id)),
+            Permission.slug == self.required_permission_slug,
+            PermissionRole.deleted_at == None,
+            Permission.deleted_at == None
+        ).first()
+
+        # Если в цепочке ничего не нашли — 403 ошибка
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Недостаточно прав. Требуется разрешение: {self.required_permission_slug}"
+            )
+
+        return current_user
