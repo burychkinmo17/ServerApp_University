@@ -1,6 +1,8 @@
 import platform
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from app.dto.lb1_dto import ServerInfoDTO, ClientInfoDTO, DatabaseInfoDTO
+from sqlalchemy import create_engine, text
+import os
 
 router = APIRouter(prefix="/info")
 
@@ -20,8 +22,19 @@ async def get_client_info(request: Request):
 
 @router.get("/database", response_model=DatabaseInfoDTO)
 async def get_database_info():
-    return DatabaseInfoDTO(
-        driver="postgresql",
-        database_name="university_db",
-        server_version="15.2"
-    )
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise HTTPException(status_code=500, detail="DATABASE_URL not set")
+
+    try:
+        engine = create_engine(db_url)
+        with engine.connect() as conn:
+            sql = text("SELECT sqlite_version();") if engine.name == 'sqlite' else text("SELECT version();")
+            ver = conn.execute(sql).scalar()
+            return DatabaseInfoDTO(
+                driver=engine.driver,
+                database_name=engine.url.database or "local",
+                server_version=str(ver)
+            )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Database connection error")
