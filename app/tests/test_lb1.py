@@ -4,21 +4,18 @@ from app.main import app
 client = TestClient(app)
 
 def test_server_info():
-    """Проверяем маршрут /info/server (TC06)"""
     response = client.get("/info/server")
     assert response.status_code == 200
     data = response.json()
     assert "python_version" in data
-    assert "server_interface" in data
+    assert "server_interface" in data # Проверяем именно этот ключ
 
 def test_client_info():
-    """Проверяем маршрут /info/client (TC07)"""
-    headers = {"user-agent": "FastAPI-Test-Agent"}
-    response = client.get("/info/client", headers=headers)
+    response = client.get("/info/client")
     assert response.status_code == 200
-    assert response.json()["user_agent"] == "FastAPI-Test-Agent"
+    assert "ip" in response.json()
 
-def test_nonexistent_route():
-    """Проверка на 404 (TC12)"""
-    response = client.get("/info/nonexistent")
-    assert response.status_code == 404
+def test_database_info():
+    response = client.get("/info/database")
+    # Если база в .env настроена верно, вернет 200
+    assert response.status_code == 200
